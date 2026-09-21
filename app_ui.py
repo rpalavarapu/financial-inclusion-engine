@@ -9,16 +9,18 @@ if str(ROOT_DIR) not in sys.path:
 import streamlit as st
 import pandas as pd
 import numpy as np
+import json
 
 from src.model import DynamicRiskEngine
 from src.bedrock_explainability import BedrockExplainer
 from src.vector_search import SemanticApplicantMatcher
+from src.fairness_audit import BiasFairnessAuditor
 
 # Page Setup
 st.set_page_config(page_title="AI Financial Inclusion Engine", layout="wide", page_icon="💳")
 
 st.title("💳 AI-Powered Financial Inclusion Engine")
-st.caption("Real-Time Dynamic Risk Assessment & Explainable AI for Underserved Segments")
+st.caption("Real-Time Dynamic Risk Assessment, Explainable AI & Regulatory Compliance")
 
 # Sidebar - Feature Controls
 st.sidebar.header("📊 Applicant Behavioral Signals")
@@ -49,34 +51,45 @@ col3.metric("Underwriting Decision", status)
 
 st.divider()
 
-# Layout: Explainability & Vector Search Columns
-left_col, right_col = st.columns(2)
+# Create Main Tabs for Advanced Evaluation
+tab1, tab2, tab3 = st.tabs(["📊 Underwriting & Explainability", "🌐 Semantic Search (pgvector)", "⚖️ Responsible AI & Bias Audit"])
 
-with left_col:
+with tab1:
     st.subheader("🔍 Explainable AI (SHAP Impact Attribution)")
     
-    # Feature Impact Native Streamlit Bar Chart
     shap_factors = assessment["positive_signals"] + assessment["risk_signals"]
     shap_df = pd.DataFrame(shap_factors, columns=["Feature", "Impact Score"]).set_index("Feature")
     st.bar_chart(shap_df)
     
-    st.write("**Top Drivers:**")
-    for feat, score in assessment["positive_signals"]:
-        st.write(f"🟢 **Positive Impact**: `{feat}` (+{score})")
-    for feat, score in assessment["risk_signals"]:
-        st.write(f"🔴 **Risk Impact**: `{feat}` (+{score})")
+    st.write("**Top Key Factors:**")
+    col_pos, col_neg = st.columns(2)
+    with col_pos:
+        for feat, score in assessment["positive_signals"]:
+            st.success(f"🟢 **Positive Driver**: `{feat}` (+{score})")
+    with col_neg:
+        for feat, score in assessment["risk_signals"]:
+            st.error(f"🔴 **Risk Driver**: `{feat}` (+{score})")
 
-with right_col:
+with tab2:
     st.subheader("🌐 Semantic Profile Retrieval (pgvector)")
     matcher = SemanticApplicantMatcher()
     input_vector = np.array([utility_score, recharge_freq, inflow_stability, gig_payout])
     similar_cases = matcher.find_similar_profiles(input_vector)
     
     for case in similar_cases:
-        st.info(f"**Matched Historical Case:** `{case['id']}`\n\n"
-                f"**Similarity Score:** {case['similarity']*100:.1f}%\n\n"
-                f"**Outcome:** {case['outcome']}\n\n"
-                f"**Profile Note:** {case['note']}")
+        st.info(f"**Matched Historical Case:** `{case['id']}` | **Similarity:** {case['similarity']*100:.1f}%\n\n"
+                f"**Outcome:** {case['outcome']} | **Note:** {case['note']}")
+
+with tab3:
+    st.subheader("⚖️ Demographic Parity & Algorithmic Fairness")
+    auditor = BiasFairnessAuditor()
+    audit_results = auditor.calculate_disparate_impact()
+    
+    st.metric("Disparate Impact Ratio (DIR)", f"{audit_results['disparate_impact_ratio']} (Threshold >= 0.80)")
+    if audit_results["is_compliant"]:
+        st.success(f"✅ {audit_results['status']} — Model adheres to regulatory fairness standards across demographic cohorts.")
+    else:
+        st.warning(f"⚠️ {audit_results['status']} — Model requires demographic re-weighting.")
 
 st.divider()
 
@@ -85,3 +98,19 @@ st.subheader("📜 AWS Bedrock Regulatory Transparency Output")
 explainer_bedrock = BedrockExplainer()
 explanation_text = explainer_bedrock.generate_explanation(assessment)
 st.success(explanation_text)
+
+# Downloadable Audit Trail JSON
+st.divider()
+st.subheader("📥 Regulatory Compliance Export")
+audit_export = {
+    "applicant_signals": applicant_data.to_dict(orient="records")[0],
+    "assessment_outcome": assessment,
+    "fairness_audit": audit_results,
+    "explanation": explanation_text
+}
+st.download_button(
+    label="Download Compliance Certificate (JSON)",
+    data=json.dumps(audit_export, indent=4),
+    file_name="underwriting_audit_certificate.json",
+    mime="application/json"
+)
