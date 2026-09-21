@@ -24,8 +24,8 @@ class DynamicRiskEngine:
         # Target: 0 (Good Standing), 1 (Default Risk)
         y_train = (
             X_train['utility_payment_consistency'] * 0.25 +
-            X_train['monthly_recharge_frequency'] * 0.25 +
-            X_train['wallet_cash_inflow_stability'] * 0.25 +
+            (1 - X_train['monthly_recharge_frequency']) * 0.25 +
+            (1 - X_train['wallet_cash_inflow_stability']) * 0.25 +
             X_train['gig_platform_payout_regularity'] * 0.25 < 0.5
         ).astype(int)
         
