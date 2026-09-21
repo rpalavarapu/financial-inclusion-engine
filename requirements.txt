@@ -1,6 +1,8 @@
-lightgbm
+xgboost
 shap
 numpy
 pandas
 boto3
 scikit-learn
+streamlit
+matplotlib

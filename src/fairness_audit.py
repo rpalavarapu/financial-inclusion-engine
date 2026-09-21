@@ -3,7 +3,8 @@ import numpy as np
 class BiasFairnessAuditor:
     """
     Evaluates algorithmic fairness across underserved sub-demographics
-    to ensure disparate impact ratios satisfy regulatory standards (80% rule).
+    (e.g., urban gig workers vs. rural agricultural workers) to ensure
+    disparate impact ratios satisfy regulatory standards (80% rule).
     """
     def __init__(self):
         pass

@@ -97,7 +97,35 @@ st.divider()
 st.subheader("📜 AWS Bedrock Regulatory Transparency Output")
 explainer_bedrock = BedrockExplainer()
 explanation_text = explainer_bedrock.generate_explanation(assessment)
-st.success(explanation_text)
+
+# Status Badge
+if explainer_bedrock.is_live:
+    st.success(f"🟢 **Live AWS Bedrock Connected** — Model: `{explainer_bedrock.last_model}`")
+else:
+    st.info("🛡️ **Synthesized via Regulatory Explainability Engine** (FCRA & ECOA Compliant)")
+
+st.markdown(f"""
+> **Official Underwriting Disclosure Statement:**
+> 
+> {explanation_text}
+""")
+
+# Expandable Cloud Diagnostics & Setup Guide
+if not explainer_bedrock.is_live:
+    with st.expander("ℹ️ AWS Bedrock Cloud Setup & Live Status Guide", expanded=False):
+        if explainer_bedrock.last_error:
+            st.markdown(f"**Current Bedrock Notice:** `{explainer_bedrock.last_error}`")
+        st.markdown("""
+        **To activate real-time Live AWS Bedrock generation:**
+        1. **Model Access in AWS Console:** Open the **Amazon Bedrock Console** (region `us-east-1`). In the left navigation, click **Model access** -> **Modify model access**, check **Amazon Nova Micro** (or **Anthropic Claude 3 Haiku**), and submit. Access for Amazon models is granted immediately.
+        2. **Streamlit Cloud Secrets:** In your Streamlit Cloud app settings under **Secrets**, ensure you have:
+        ```toml
+        AWS_BEARER_TOKEN_BEDROCK = "your_bedrock_api_key"
+        AWS_DEFAULT_REGION = "us-east-1"
+        BEDROCK_MODEL_ID = "amazon.nova-micro-v1:0"
+        ```
+        *(Or your standard AWS IAM `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`)*.
+        """)
 
 # Downloadable Audit Trail JSON
 st.divider()
@@ -106,7 +134,12 @@ audit_export = {
     "applicant_signals": applicant_data.to_dict(orient="records")[0],
     "assessment_outcome": assessment,
     "fairness_audit": audit_results,
-    "explanation": explanation_text
+    "explanation": {
+        "text": explanation_text,
+        "source": explainer_bedrock.last_source,
+        "is_live_bedrock": explainer_bedrock.is_live,
+        "model": explainer_bedrock.last_model if explainer_bedrock.is_live else "local-ethical-synthesizer"
+    }
 }
 st.download_button(
     label="Download Compliance Certificate (JSON)",
@@ -114,3 +147,4 @@ st.download_button(
     file_name="underwriting_audit_certificate.json",
     mime="application/json"
 )
+
