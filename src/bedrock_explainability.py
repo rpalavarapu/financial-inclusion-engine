@@ -14,7 +14,6 @@ try:
 except ImportError:
     pass
 
-import boto3
 try:
     import streamlit as st
 except ImportError:
@@ -27,92 +26,62 @@ except Exception:
         from config.settings import AWS_REGION, BEDROCK_MODEL_ID
     except Exception:
         AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-        BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0")
+        BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "zai.glm-4.7-flash")
 
-# Ensure model ID is not the retired Claude v2
-if BEDROCK_MODEL_ID == "anthropic.claude-v2":
-    BEDROCK_MODEL_ID = "amazon.nova-micro-v1:0"
+
+MANTLE_ENDPOINT = "https://bedrock-mantle.us-east-1.api.aws/v1/chat/completions"
+
+# Ordered list of available Mantle models to try, cheapest/fastest first
+MANTLE_CANDIDATE_MODELS = [
+    "zai.glm-4.7-flash",        # $0.07 / $0.40 per 1M tokens - fastest & cheapest
+    "google.gemma-4-e2b",       # $0.04 / $0.08 per 1M tokens
+    "nvidia.nemotron-nano-3-30b",
+    "minimax.minimax-m2.5",
+    "anthropic.claude-opus-4-7",
+    "openai.gpt-5.6-luna",
+]
 
 
 class BedrockExplainer:
     """
-    Invokes AWS Bedrock to synthesize SHAP factors into regulatory-compliant disclosure letters.
-    Supports Amazon Bedrock API Key bearer token authentication (ABSK prefix),
-    traditional AWS IAM SigV4 credentials, Bedrock Converse API, and an ethical fallback engine.
+    Invokes AWS Bedrock Mantle (OpenAI-compatible endpoint) to synthesize SHAP factors
+    into regulatory-compliant disclosure letters.
+    Falls back to an ethical FCRA/ECOA-compliant synthesis engine when Bedrock is unreachable.
     """
     def __init__(self):
         self.is_live: bool = False
         self.last_model: str = ""
         self.last_source: str = ""
         self.last_error: str = ""
-        self.client = None
         self.region = AWS_REGION
-        self.preferred_model_id = BEDROCK_MODEL_ID
+        self._bearer_token: str = ""
 
-        # 1. Safely retrieve secrets from Streamlit Secrets or Environment Variables
-        aws_key = None
-        aws_secret = None
+        # 1. Safely retrieve credentials from Streamlit Secrets or Environment Variables
         bearer_token = None
+        aws_secret = None
 
         if st:
             try:
                 secrets = getattr(st, "secrets", None)
                 if secrets is not None:
-                    aws_key = secrets.get("AWS_ACCESS_KEY_ID")
-                    aws_secret = secrets.get("AWS_SECRET_ACCESS_KEY")
                     bearer_token = secrets.get("AWS_BEARER_TOKEN_BEDROCK") or secrets.get("BEDROCK_API_KEY")
-                    self.region = secrets.get("AWS_DEFAULT_REGION", self.region)
-                    self.preferred_model_id = secrets.get("BEDROCK_MODEL_ID", self.preferred_model_id)
+                    aws_secret = secrets.get("AWS_SECRET_ACCESS_KEY")
             except Exception:
-                # Outside Streamlit or missing secrets.toml
                 pass
 
-        aws_key = aws_key or os.getenv("AWS_ACCESS_KEY_ID")
-        aws_secret = aws_secret or os.getenv("AWS_SECRET_ACCESS_KEY")
         bearer_token = bearer_token or os.getenv("AWS_BEARER_TOKEN_BEDROCK") or os.getenv("BEDROCK_API_KEY")
-        self.region = os.getenv("AWS_DEFAULT_REGION", self.region)
-        self.preferred_model_id = os.getenv("BEDROCK_MODEL_ID", self.preferred_model_id)
+        aws_secret = aws_secret or os.getenv("AWS_SECRET_ACCESS_KEY")
 
-        # 2. Smart credential detection: Handle Bedrock API Keys (ABSK bearer token)
-        # Bedrock API keys start with ABSK. When passed as secret or key, they are bearer tokens, NOT SigV4 keys.
+        # 2. Detect Bedrock API Keys (ABSK prefix) passed as the secret access key
         if aws_secret and aws_secret.startswith("ABSK"):
-            bearer_token = aws_secret
-            aws_key = None
-            aws_secret = None
-        elif aws_key and aws_key.startswith("ABSK"):
-            bearer_token = aws_key
-            aws_key = None
-            aws_secret = None
+            bearer_token = bearer_token or aws_secret
 
-        if bearer_token:
-            os.environ["AWS_BEARER_TOKEN_BEDROCK"] = bearer_token
-            # Remove dummy IAM keys from environment so boto3 doesn't attempt invalid SigV4
-            if os.environ.get("AWS_ACCESS_KEY_ID", "").startswith("BedrockAPIKey"):
-                os.environ.pop("AWS_ACCESS_KEY_ID", None)
-                os.environ.pop("AWS_SECRET_ACCESS_KEY", None)
-
-        # 3. Initialize Boto3 Bedrock Runtime Client
-        try:
-            if aws_key and aws_secret and (aws_key.startswith("AKIA") or aws_key.startswith("ASIA")):
-                self.client = boto3.client(
-                    service_name="bedrock-runtime",
-                    region_name=self.region,
-                    aws_access_key_id=aws_key,
-                    aws_secret_access_key=aws_secret
-                )
-            else:
-                self.client = boto3.client(
-                    service_name="bedrock-runtime",
-                    region_name=self.region
-                )
-        except Exception as e:
-            self.client = None
-            self.last_error = f"Client initialization error: {str(e)}"
+        self._bearer_token = bearer_token or ""
 
     def _synthesize_local_explanation(self, assessment_result: dict) -> str:
         """
-        Synthesizes a compliant, transparent 3-sentence regulatory adverse action or approval letter
-        derived from objective behavioral signals and SHAP factor attribution under FCRA/ECOA principles.
+        Synthesizes a compliant, transparent 3-sentence regulatory disclosure letter
+        from objective behavioral signals and SHAP factor attribution (FCRA/ECOA principles).
         """
         score = assessment_result.get("credit_score", 650)
         pd_proba = assessment_result.get("probability_of_default", 0.15)
@@ -128,100 +97,97 @@ class BedrockExplainer:
 
         pos_signals = assessment_result.get("positive_signals", [])
         risk_signals = assessment_result.get("risk_signals", [])
-
         pos_phrases = [feature_display.get(f, f.replace('_', ' ')) for f, _ in pos_signals]
         risk_phrases = [feature_display.get(f, f.replace('_', ' ')) for f, _ in risk_signals]
-
         pos_desc = " and ".join(pos_phrases[:2]) if pos_phrases else "responsible alternative liquidity activity"
         risk_desc = " and ".join(risk_phrases[:2]) if risk_phrases else "periodic cashflow volatility"
 
         if is_approved:
-            s1 = (
-                f"Your application has been evaluated with a Dynamic Alternative Credit Score of {score}/850 (Approval Status: APPROVED), "
-                f"reflecting a favorable estimated default risk profile of {pd_pct}%."
-            )
-            s2 = (
-                f"This positive decision was primarily driven by your {pos_desc}, "
-                f"which establishes strong recurring liquidity management outside legacy banking barriers."
-            )
-            s3 = (
+            return (
+                f"Your application has been evaluated with a Dynamic Alternative Credit Score of {score}/850 "
+                f"(Approval Status: APPROVED), reflecting a favorable estimated default risk profile of {pd_pct}%. "
+                f"This positive decision was primarily driven by your {pos_desc}, which establishes strong recurring "
+                f"liquidity management outside legacy banking barriers. "
                 f"To maintain or further enhance your credit standing, continue sustaining {risk_desc}, "
                 f"which will qualify your profile for prime underwriting rates under algorithmic fairness standards."
             )
         else:
-            s1 = (
-                f"Your application has been evaluated with a Dynamic Alternative Credit Score of {score}/850 (Status: ADDITIONAL REVIEW REQUIRED), "
-                f"with an estimated default risk of {pd_pct}% under our unbanked inclusion model."
-            )
-            s2 = (
+            return (
+                f"Your application has been evaluated with a Dynamic Alternative Credit Score of {score}/850 "
+                f"(Status: ADDITIONAL REVIEW REQUIRED), with an estimated default risk of {pd_pct}% under our unbanked inclusion model. "
                 f"While your profile demonstrated positive habits in {pos_desc}, "
-                f"the primary factors limiting your tier were {risk_desc}."
+                f"the primary factors limiting your tier were {risk_desc}. "
+                f"To achieve automatic approval, we recommend maintaining steady wallet balances and routine weekly recharges "
+                f"for 60 consecutive days to bolster cashflow predictability under FCRA transparency guidelines."
             )
-            s3 = (
-                f"To achieve automatic approval, we recommend maintaining steady wallet balances and routine weekly recharges for 60 consecutive days "
-                f"to bolster cashflow predictability under FCRA transparency guidelines."
-            )
-
-        return f"{s1} {s2} {s3}"
 
     def generate_explanation(self, assessment_result: dict) -> str:
         """
-        Attempts live AWS Bedrock inference using the Converse API with automatic model fallback.
-        Gracefully falls back to the deterministic ethical compliance engine if Bedrock model access is pending.
+        Calls Bedrock Mantle via OpenAI-compatible chat/completions API with model fallback.
+        Falls back to the ethical synthesis engine if all models fail.
         """
+        import requests as req
+
         prompt = (
-            f"You are an ethical AI Credit Explanation Engine for an underserved underwriting platform.\n"
+            f"You are an ethical AI Credit Explanation Engine for an underserved underwriting platform. "
             f"Synthesize the following score factors into a clear, 3-sentence regulatory transparency explanation for the applicant.\n\n"
             f"Applicant Score: {assessment_result.get('credit_score', 650)} / 850\n"
             f"Probability of Default: {assessment_result.get('probability_of_default', 0.10) * 100:.2f}%\n"
-            f"Underwriting Decision: {'APPROVED' if assessment_result.get('credit_score', 650) >= 650 else 'ADDITIONAL REVIEW / REJECTED'}\n"
-            f"Positive Drivers: {assessment_result.get('positive_signals', [])}\n"
-            f"Risk Drivers: {assessment_result.get('risk_signals', [])}\n\n"
-            f"Guidelines:\n"
-            f"1. Avoid complex financial jargon.\n"
-            f"2. Clearly explain positive habits that boosted the score.\n"
-            f"3. Provide one actionable tip for improving credit eligibility.\n"
-            f"4. Exactly 3 sentences."
+            f"Decision: {'APPROVED' if assessment_result.get('credit_score', 650) >= 650 else 'ADDITIONAL REVIEW / REJECTED'}\n"
+            f"Positive Drivers: {[f for f, _ in assessment_result.get('positive_signals', [])]}\n"
+            f"Risk Drivers: {[f for f, _ in assessment_result.get('risk_signals', [])]}\n\n"
+            f"Guidelines: Avoid jargon. Explain what boosted the score. Give one actionable tip. Exactly 3 sentences."
         )
 
-        candidate_models = [
-            self.preferred_model_id,
-            "amazon.nova-micro-v1:0",
-            "us.amazon.nova-micro-v1:0",
-            "anthropic.claude-3-haiku-20240307-v1:0",
-            "us.anthropic.claude-3-haiku-20240307-v1:0",
-            "amazon.titan-text-express-v1"
-        ]
-        # Remove duplicates and EOL models
-        seen = set()
-        clean_candidates = []
-        for m in candidate_models:
-            if m and m != "anthropic.claude-v2" and m not in seen:
-                seen.add(m)
-                clean_candidates.append(m)
+        if not self._bearer_token:
+            self.last_error = "No AWS Bedrock API key found. Set AWS_BEARER_TOKEN_BEDROCK in Streamlit Secrets or .env"
+            self.last_source = "Regulatory Compliance Engine (Local AI)"
+            return self._synthesize_local_explanation(assessment_result)
 
-        if self.client:
-            for model_id in clean_candidates:
-                try:
-                    response = self.client.converse(
-                        modelId=model_id,
-                        messages=[{"role": "user", "content": [{"text": prompt}]}],
-                        inferenceConfig={"maxTokens": 300, "temperature": 0.2}
-                    )
-                    content_list = response.get("output", {}).get("message", {}).get("content", [])
-                    if content_list and "text" in content_list[0]:
-                        output_text = content_list[0]["text"].strip()
-                        if output_text:
-                            self.is_live = True
-                            self.last_model = model_id
-                            self.last_source = f"AWS Bedrock Live ({model_id})"
-                            self.last_error = ""
-                            return output_text
-                except Exception as e:
-                    self.last_error = f"{type(e).__name__} ({model_id}): {str(e)}"
+        headers = {
+            "Authorization": f"Bearer {self._bearer_token}",
+            "Content-Type": "application/json"
+        }
+
+        # Build candidate models: user preference first, then fallbacks
+        preferred = os.getenv("BEDROCK_MODEL_ID", "zai.glm-4.7-flash")
+        candidates = [preferred] + [m for m in MANTLE_CANDIDATE_MODELS if m != preferred]
+
+        for model_id in candidates:
+            try:
+                payload = {
+                    "model": model_id,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 350,
+                    "temperature": 0.3
+                }
+                response = req.post(MANTLE_ENDPOINT, headers=headers, json=payload, timeout=25)
+
+                if response.status_code == 200:
+                    result = response.json()
+                    output_text = result["choices"][0]["message"]["content"].strip()
+                    if output_text:
+                        self.is_live = True
+                        self.last_model = model_id
+                        self.last_source = f"AWS Bedrock Mantle Live ({model_id})"
+                        self.last_error = ""
+                        return output_text
+                else:
+                    err_body = response.json().get("error", {})
+                    err_msg = err_body.get("message", response.text[:200])
+                    if response.status_code == 403:
+                        self.last_error = f"Permission denied for '{model_id}': {err_msg}"
+                    elif response.status_code == 404:
+                        self.last_error = f"Model '{model_id}' not found on Mantle."
+                    else:
+                        self.last_error = f"HTTP {response.status_code} for '{model_id}': {err_msg}"
                     continue
 
-        # If live Bedrock could not be reached or model access is pending, generate the compliant explanation
+            except Exception as e:
+                self.last_error = f"Connection error for '{model_id}': {str(e)[:120]}"
+                continue
+
+        # All models failed — use ethical synthesis engine
         self.is_live = False
         self.last_source = "Regulatory Compliance Engine (Local AI)"
         return self._synthesize_local_explanation(assessment_result)

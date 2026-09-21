@@ -1,3 +1,4 @@
+lightgbm
 xgboost
 shap
 numpy
@@ -6,3 +7,6 @@ boto3
 scikit-learn
 streamlit
 matplotlib
+requests
+python-dotenv
+anthropic
