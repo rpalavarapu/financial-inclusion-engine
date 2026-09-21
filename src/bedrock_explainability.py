@@ -1,24 +1,47 @@
 import json
 import sys
+import os
 from pathlib import Path
 
-# Add project root directory to sys.path BEFORE loading internal packages
+# Add project root directory to sys.path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import boto3
 try:
-    from config.settings import AWS_REGION, BEDROCK_MODEL_ID
-except ModuleNotFoundError:
-    AWS_REGION = "us-east-1"
-    BEDROCK_MODEL_ID = "anthropic.claude-v2"
+    import streamlit as st
+except ImportError:
+    st = None
+
+from config.settings import AWS_REGION, BEDROCK_MODEL_ID
 
 class BedrockExplainer:
     """Invokes AWS Bedrock to synthesize SHAP factors into regulatory-compliant letters."""
     def __init__(self):
+        # Attempt to pull credentials from Streamlit Secrets or OS Environment Variables
+        aws_key = None
+        aws_secret = None
+        
+        if st and hasattr(st, "secrets") and "AWS_ACCESS_KEY_ID" in st.secrets:
+            aws_key = st.secrets["AWS_ACCESS_KEY_ID"]
+            aws_secret = st.secrets["AWS_SECRET_ACCESS_KEY"]
+            region = st.secrets.get("AWS_DEFAULT_REGION", AWS_REGION)
+        else:
+            aws_key = os.getenv("AWS_ACCESS_KEY_ID")
+            aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY")
+            region = os.getenv("AWS_DEFAULT_REGION", AWS_REGION)
+
         try:
-            self.client = boto3.client(service_name="bedrock-runtime", region_name=AWS_REGION)
+            if aws_key and aws_secret:
+                self.client = boto3.client(
+                    service_name="bedrock-runtime",
+                    region_name=region,
+                    aws_access_key_id=aws_key,
+                    aws_secret_access_key=aws_secret
+                )
+            else:
+                self.client = boto3.client(service_name="bedrock-runtime", region_name=region)
         except Exception:
             self.client = None
 
