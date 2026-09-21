@@ -1,0 +1,14 @@
+# Python & virtual environments
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Models & Data
+models/*.txt
+*.csv
+
+# Antigravity IDE state / logs
+.antigravity/
+.idea/
+.vscode/
