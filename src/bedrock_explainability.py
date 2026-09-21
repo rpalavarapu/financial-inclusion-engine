@@ -3,7 +3,7 @@ import sys
 import os
 from pathlib import Path
 
-# Add project root directory to sys.path
+# Explicitly append root project path to Python's search path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
@@ -14,15 +14,19 @@ try:
 except ImportError:
     st = None
 
-from config.settings import AWS_REGION, BEDROCK_MODEL_ID
+try:
+    from config.settings import AWS_REGION, BEDROCK_MODEL_ID
+except ModuleNotFoundError:
+    AWS_REGION = "us-east-1"
+    BEDROCK_MODEL_ID = "anthropic.claude-v2"
 
 class BedrockExplainer:
     """Invokes AWS Bedrock to synthesize SHAP factors into regulatory-compliant letters."""
     def __init__(self):
-        # Attempt to pull credentials from Streamlit Secrets or OS Environment Variables
         aws_key = None
         aws_secret = None
         
+        # Check Streamlit Cloud Secrets first, then OS Environment Variables
         if st and hasattr(st, "secrets") and "AWS_ACCESS_KEY_ID" in st.secrets:
             aws_key = st.secrets["AWS_ACCESS_KEY_ID"]
             aws_secret = st.secrets["AWS_SECRET_ACCESS_KEY"]
