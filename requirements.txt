@@ -10,3 +10,7 @@ matplotlib
 requests
 python-dotenv
 anthropic
+fastapi
+uvicorn
+pydantic
+
