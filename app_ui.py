@@ -17,13 +17,13 @@ from src.vector_search import SemanticApplicantMatcher
 from src.fairness_audit import BiasFairnessAuditor
 
 # Page Setup
-st.set_page_config(page_title="AI Financial Inclusion Engine", layout="wide", page_icon="💳")
+st.set_page_config(page_title="Financial Inclusion Underwriting Platform", layout="wide")
 
-st.title("💳 AI-Powered Financial Inclusion Engine")
-st.caption("Real-Time Dynamic Risk Assessment, Explainable AI & Regulatory Compliance")
+st.title("Financial Inclusion Underwriting Engine")
+st.caption("Real-Time Dynamic Risk Assessment, Credit Risk Attribution & Regulatory Compliance")
 
 # Sidebar - Feature Controls
-st.sidebar.header("📊 Applicant Behavioral Signals")
+st.sidebar.header("Applicant Behavioral Signals")
 utility_score = st.sidebar.slider("Utility Payment Consistency", 0.0, 1.0, 0.88, 0.01)
 recharge_freq = st.sidebar.slider("Monthly Recharge Frequency", 0.0, 1.0, 0.75, 0.01)
 inflow_stability = st.sidebar.slider("Wallet Cash Inflow Stability", 0.0, 1.0, 0.62, 0.01)
@@ -46,16 +46,16 @@ col1, col2, col3 = st.columns(3)
 col1.metric("Dynamic Credit Score", f"{assessment['credit_score']} / 850")
 col2.metric("Probability of Default (PD)", f"{assessment['probability_of_default'] * 100:.2f}%")
 
-status = "APPROVED ✅" if assessment["credit_score"] >= 650 else "REJECTED ❌"
+status = "APPROVED" if assessment["credit_score"] >= 650 else "REJECTED"
 col3.metric("Underwriting Decision", status)
 
 st.divider()
 
 # Create Main Tabs for Advanced Evaluation
-tab1, tab2, tab3 = st.tabs(["📊 Underwriting & Explainability", "🌐 Semantic Search (pgvector)", "⚖️ Responsible AI & Bias Audit"])
+tab1, tab2, tab3 = st.tabs(["Underwriting & Explainability", "Semantic Search (pgvector)", "Fairness & Bias Audit"])
 
 with tab1:
-    st.subheader("🔍 Explainable AI (SHAP Impact Attribution)")
+    st.subheader("Feature Impact Attribution (SHAP)")
     
     shap_factors = assessment["positive_signals"] + assessment["risk_signals"]
     shap_df = pd.DataFrame(shap_factors, columns=["Feature", "Impact Score"]).set_index("Feature")
@@ -65,13 +65,13 @@ with tab1:
     col_pos, col_neg = st.columns(2)
     with col_pos:
         for feat, score in assessment["positive_signals"]:
-            st.success(f"🟢 **Positive Driver**: `{feat}` (+{score})")
+            st.success(f"**Positive Driver**: `{feat}` (+{score})")
     with col_neg:
         for feat, score in assessment["risk_signals"]:
-            st.error(f"🔴 **Risk Driver**: `{feat}` (+{score})")
+            st.error(f"**Risk Driver**: `{feat}` (+{score})")
 
 with tab2:
-    st.subheader("🌐 Semantic Profile Retrieval (pgvector)")
+    st.subheader("Semantic Profile Retrieval (pgvector)")
     matcher = SemanticApplicantMatcher()
     input_vector = np.array([utility_score, recharge_freq, inflow_stability, gig_payout])
     similar_cases = matcher.find_similar_profiles(input_vector)
@@ -81,28 +81,28 @@ with tab2:
                 f"**Outcome:** {case['outcome']} | **Note:** {case['note']}")
 
 with tab3:
-    st.subheader("⚖️ Demographic Parity & Algorithmic Fairness")
+    st.subheader("Demographic Parity & Algorithmic Fairness")
     auditor = BiasFairnessAuditor()
     audit_results = auditor.calculate_disparate_impact()
     
     st.metric("Disparate Impact Ratio (DIR)", f"{audit_results['disparate_impact_ratio']} (Threshold >= 0.80)")
     if audit_results["is_compliant"]:
-        st.success(f"✅ {audit_results['status']} — Model adheres to regulatory fairness standards across demographic cohorts.")
+        st.success(f"{audit_results['status']} — Model adheres to regulatory fairness standards across demographic cohorts.")
     else:
-        st.warning(f"⚠️ {audit_results['status']} — Model requires demographic re-weighting.")
+        st.warning(f"{audit_results['status']} — Model requires demographic re-weighting.")
 
 st.divider()
 
 # Regulatory Transparency Letter Section
-st.subheader("📜 AWS Bedrock Regulatory Transparency Output")
+st.subheader("Regulatory Disclosure Statement")
 explainer_bedrock = BedrockExplainer()
 explanation_text = explainer_bedrock.generate_explanation(assessment)
 
 # Status Badge
 if explainer_bedrock.is_live:
-    st.success(f"🟢 **Live AWS Bedrock Connected** — Model: `{explainer_bedrock.last_model}`")
+    st.success(f"**Live AWS Bedrock Connected** — Model: `{explainer_bedrock.last_model}`")
 else:
-    st.info("🛡️ **Synthesized via Regulatory Explainability Engine** (FCRA & ECOA Compliant)")
+    st.info("**Synthesized via Regulatory Compliance Engine** (FCRA & ECOA Compliant)")
 
 st.markdown(f"""
 > **Official Underwriting Disclosure Statement:**
@@ -112,7 +112,7 @@ st.markdown(f"""
 
 # Expandable Cloud Diagnostics & Setup Guide
 if not explainer_bedrock.is_live:
-    with st.expander("ℹ️ AWS Bedrock Cloud Setup & Live Status Guide", expanded=False):
+    with st.expander("AWS Bedrock Cloud Setup & Status Guide", expanded=False):
         if explainer_bedrock.last_error:
             st.markdown(f"**Current Bedrock Notice:** `{explainer_bedrock.last_error}`")
         st.markdown("""
@@ -129,7 +129,7 @@ if not explainer_bedrock.is_live:
 
 # Downloadable Audit Trail JSON
 st.divider()
-st.subheader("📥 Regulatory Compliance Export")
+st.subheader("Regulatory Compliance Export")
 audit_export = {
     "applicant_signals": applicant_data.to_dict(orient="records")[0],
     "assessment_outcome": assessment,
