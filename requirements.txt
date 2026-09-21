@@ -13,4 +13,6 @@ anthropic
 fastapi
 uvicorn
 pydantic
+pyjwt
+
 
