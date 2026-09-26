@@ -1,0 +1,36 @@
+{
+    "users": {
+        "underwriter_demo": {
+            "id": "24bb8b95-80f1-48eb-a46f-008ad345e120",
+            "username": "underwriter_demo",
+            "email": "ab@mail.com",
+            "salt": "7d2da42327724460b828dc1bed70b0f0",
+            "password_hash": "e35e4c8a5ab33185fa07e69253a8d4d2a456e13e6b3da37536bb6143779d44e4",
+            "created_at": "1790015280.0377445"
+        },
+        "rishi_underwriter": {
+            "id": "bb55cd73-0054-45ba-9c0d-34f20586527a",
+            "username": "rishi_underwriter",
+            "email": "rishi@synchrony.com",
+            "salt": "ca4ff8acb2a949b38ca2666af9e36995",
+            "password_hash": "5f06ca24027d20c7667dd1d1b338d0588f73efc69a7d0cace9f0642792e9e1dc",
+            "created_at": "1790015280.0377445"
+        },
+        "rishi": {
+            "id": "1513a1d5-2b7c-4b98-be65-bd5a965b811e",
+            "username": "rishi",
+            "email": "rishi@gmail.com",
+            "salt": "b0976c10e1a042bb95712697ad05613d",
+            "password_hash": "5ef1b55c29ed1496c299a6bdf9950a8c0d2799fd410953ad66d2826d59f3676b",
+            "created_at": "1790015280.0377445"
+        },
+        "rohan": {
+            "id": "a4567aa0-e7ca-4b03-bea1-99f8e3ba6bfe",
+            "username": "rohan",
+            "email": "rohan@mail.com",
+            "salt": "5c61e709645c4400aeebbee00f2238bd",
+            "password_hash": "d3797478daf1431c484cbd6bd478c2794e2da26f9183012e5665a33ba928ae44",
+            "created_at": "1790015640.369603"
+        }
+    }
+}

@@ -6,16 +6,22 @@ import UnderwritingTab from './components/UnderwritingTab';
 import SemanticSearchTab from './components/SemanticSearchTab';
 import FairnessAuditTab from './components/FairnessAuditTab';
 import BedrockExplanationTab from './components/BedrockExplanationTab';
-import { BarChart3, Database, Scale, FileText } from 'lucide-react';
+import LoginPage from './components/LoginPage';
+import ApplicantIntakeForm from './components/ApplicantIntakeForm';
 
 const API_BASE = 'http://127.0.0.1:8000';
 
 export default function App() {
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('auth_token') || '');
+  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('auth_user') || '');
+
+  // User input intake state
+  const [hasSubmittedIntake, setHasSubmittedIntake] = useState(false);
   const [signals, setSignals] = useState({
-    utility_payment_consistency: 0.88,
-    monthly_recharge_frequency: 0.75,
-    wallet_cash_inflow_stability: 0.62,
-    gig_platform_payout_regularity: 0.90,
+    utility_payment_consistency: 0.80,
+    monthly_recharge_frequency: 0.70,
+    wallet_cash_inflow_stability: 0.60,
+    gig_platform_payout_regularity: 0.85,
   });
 
   const [activeTab, setActiveTab] = useState('underwriting');
@@ -23,12 +29,17 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [apiHealthy, setApiHealthy] = useState(false);
 
-  const fetchFullAssessment = useCallback(async (currentSignals) => {
+  const fetchFullAssessment = useCallback(async (currentSignals, token) => {
     setLoading(true);
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(`${API_BASE}/api/full-assessment`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(currentSignals),
       });
 
@@ -40,7 +51,7 @@ export default function App() {
         setApiHealthy(false);
       }
     } catch (err) {
-      console.warn('FastAPI backend not reached, using simulated client state:', err);
+      console.warn('FastAPI backend connection error:', err);
       setApiHealthy(false);
     } finally {
       setLoading(false);
@@ -48,12 +59,43 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetchFullAssessment(signals);
-  }, [signals, fetchFullAssessment]);
+    if (authToken && hasSubmittedIntake) {
+      fetchFullAssessment(signals, authToken);
+    }
+  }, [signals, authToken, hasSubmittedIntake, fetchFullAssessment]);
+
+  const handleLoginSuccess = (token, username) => {
+    setAuthToken(token);
+    setCurrentUser(username);
+    setHasSubmittedIntake(false); // Ask for applicant input upon login
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    setAuthToken('');
+    setCurrentUser('');
+    setAssessmentData(null);
+    setHasSubmittedIntake(false);
+  };
+
+  const handleIntakeSubmit = (inputSignals) => {
+    setSignals(inputSignals);
+    setHasSubmittedIntake(true);
+  };
+
+  const handleNewApplicantRequest = () => {
+    setHasSubmittedIntake(false);
+  };
 
   const handleSignalChange = (key, value) => {
     setSignals((prev) => ({ ...prev, [key]: value }));
   };
+
+  // 1. Render Login Page if unauthenticated
+  if (!authToken) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
 
   const assessment = assessmentData?.assessment || {
     credit_score: Math.round(850 - (0.15 * 550)),
@@ -96,10 +138,10 @@ export default function App() {
   };
 
   const tabs = [
-    { id: 'underwriting', label: 'Underwriting & Explainability', icon: BarChart3 },
-    { id: 'semantic', label: 'Semantic Search (pgvector)', icon: Database },
-    { id: 'fairness', label: 'Fairness & Bias Audit', icon: Scale },
-    { id: 'explanation', label: 'Regulatory Disclosure', icon: FileText },
+    { id: 'underwriting', label: 'Underwriting & Explainability' },
+    { id: 'semantic', label: 'Semantic Search (pgvector)' },
+    { id: 'fairness', label: 'Fairness & Bias Audit' },
+    { id: 'explanation', label: 'Regulatory Disclosure' },
   ];
 
   return (
@@ -108,52 +150,62 @@ export default function App() {
         isLiveBedrock={explanation.is_live_bedrock}
         bedrockModel={explanation.last_model}
         apiHealthy={apiHealthy}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onNewApplicant={handleNewApplicantRequest}
       />
 
       <main className="max-w-7xl mx-auto px-6 w-full flex-1">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Sidebar Controls */}
-          <div className="lg:col-span-4">
-            <SignalsSidebar signals={signals} onSignalChange={handleSignalChange} />
-          </div>
-
-          {/* Main Content Area */}
-          <div className="lg:col-span-8 space-y-6">
-            <MetricsOverview assessment={assessment} loading={loading} />
-
-            {/* Navigation Tabs */}
-            <div className="flex border-b border-slate-800 space-x-2 overflow-x-auto pb-px">
-              {tabs.map((t) => {
-                const Icon = t.icon;
-                const active = activeTab === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveTab(t.id)}
-                    className={`flex items-center gap-2 px-4 py-3 text-xs md:text-sm font-semibold rounded-t-xl transition-all border-b-2 ${
-                      active
-                        ? 'bg-slate-800/80 text-blue-400 border-blue-500'
-                        : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{t.label}</span>
-                  </button>
-                );
-              })}
+        {/* 2. Require Applicant Input Form if not submitted yet */}
+        {!hasSubmittedIntake ? (
+          <ApplicantIntakeForm
+            onSubmitIntake={handleIntakeSubmit}
+            defaultSignals={signals}
+          />
+        ) : (
+          /* 3. Render Dashboard once Applicant Data is input */
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Sidebar Controls */}
+            <div className="lg:col-span-4">
+              <SignalsSidebar signals={signals} onSignalChange={handleSignalChange} />
             </div>
 
-            {/* Tab Panes */}
-            <div className="mt-4">
-              {activeTab === 'underwriting' && <UnderwritingTab assessment={assessment} />}
-              {activeTab === 'semantic' && <SemanticSearchTab matches={matches} />}
-              {activeTab === 'fairness' && <FairnessAuditTab audit={audit} />}
-              {activeTab === 'explanation' && (
-                <BedrockExplanationTab explanation={explanation} auditExport={auditExport} />
-              )}
+            {/* Main Content Area */}
+            <div className="lg:col-span-8 space-y-6">
+              <MetricsOverview assessment={assessment} loading={loading} />
+
+              {/* Navigation Tabs */}
+              <div className="flex border-b border-slate-800 space-x-2 overflow-x-auto pb-px">
+                {tabs.map((t) => {
+                  const active = activeTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setActiveTab(t.id)}
+                      className={`px-5 py-3.5 text-sm font-extrabold rounded-t-xl transition-all border-b-2 cursor-pointer ${
+                        active
+                          ? 'bg-slate-800 text-blue-400 border-blue-500'
+                          : 'text-slate-300 hover:text-white border-transparent hover:bg-slate-900'
+                      }`}
+                    >
+                      <span>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tab Panes */}
+              <div className="mt-4">
+                {activeTab === 'underwriting' && <UnderwritingTab assessment={assessment} />}
+                {activeTab === 'semantic' && <SemanticSearchTab matches={matches} />}
+                {activeTab === 'fairness' && <FairnessAuditTab audit={audit} />}
+                {activeTab === 'explanation' && (
+                  <BedrockExplanationTab explanation={explanation} auditExport={auditExport} />
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );
